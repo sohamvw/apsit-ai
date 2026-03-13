@@ -5,3 +5,4 @@ qdrant-client
 google-genai
 langdetect
 python-dotenv
+torch --index-url https://download.pytorch.org/whl/cpu
