@@ -5,11 +5,7 @@ from app.multilingual.language_detector import detect_lang
 from app.memory.session_memory import add, get
 
 from google import genai
-
 import os
-
-# Gemini client
-client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 app = FastAPI()
 
@@ -21,6 +17,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+client = None
+
+
+def get_gemini():
+    global client
+    if client is None:
+        print("Connecting to Gemini...")
+        client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+    return client
 
 
 @app.get("/health")
@@ -44,15 +50,13 @@ async def query(request: Request):
 
     combined_context = "\n\n".join(contexts)
 
-    # get conversation memory
+    # conversation memory
     history = get(session_id)
 
     history_text = ""
-
     for h in history:
         history_text += f"User: {h['q']}\nAssistant: {h['a']}\n"
 
-    # RAG prompt
     prompt = f"""
 You are APSIT Official AI Assistant.
 
@@ -72,18 +76,17 @@ User Question:
 {q}
 """
 
-    # Gemini response
-    response = client.models.generate_content(
+    gemini = get_gemini()
+
+    response = gemini.models.generate_content(
         model="gemini-2.5-flash",
         contents=prompt
     )
 
     answer = response.text
 
-    # store memory
     add(session_id, {"q": q, "a": answer})
 
-    # detect pdf links
     pdf_links = [url for url in sources if url.endswith(".pdf")]
 
     return {
