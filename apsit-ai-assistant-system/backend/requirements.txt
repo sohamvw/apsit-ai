@@ -5,6 +5,5 @@ google-genai
 langdetect
 python-dotenv
 sentence-transformers
-python==3.11.9
 torch==2.10.0+cpu
 --extra-index-url https://download.pytorch.org/whl/cpu
