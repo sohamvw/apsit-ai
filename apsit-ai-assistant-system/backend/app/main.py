@@ -1,5 +1,8 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import Optional
+
 from app.core.retriever import retrieve
 from app.multilingual.language_detector import detect_lang
 from app.memory.session_memory import add, get
@@ -21,6 +24,17 @@ app.add_middleware(
 client = None
 
 
+# -----------------------------
+# Request schema for Swagger
+# -----------------------------
+class QueryRequest(BaseModel):
+    query: str
+    session_id: Optional[str] = "default"
+
+
+# -----------------------------
+# Gemini lazy loader
+# -----------------------------
 def get_gemini():
     global client
     if client is None:
@@ -29,18 +43,22 @@ def get_gemini():
     return client
 
 
+# -----------------------------
+# Health endpoint
+# -----------------------------
 @app.get("/health")
 def health():
     return {"status": "assistant-running"}
 
 
+# -----------------------------
+# Main query endpoint
+# -----------------------------
 @app.post("/query")
-async def query(request: Request):
+async def query(request: QueryRequest):
 
-    body = await request.json()
-
-    q = body["query"]
-    session_id = body.get("session_id", "default")
+    q = request.query
+    session_id = request.session_id
 
     # detect language
     lang = detect_lang(q)
