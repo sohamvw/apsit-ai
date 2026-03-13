@@ -15,6 +15,7 @@ def get_model():
         model = SentenceTransformer(
             "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
         )
+        print("Embedding dimension:", model.get_sentence_embedding_dimension())
     return model
 
 
@@ -24,34 +25,43 @@ def get_qdrant():
         print("Connecting to Qdrant...")
         qdrant = QdrantClient(
             url=os.getenv("QDRANT_URL"),
-            api_key=os.getenv("QDRANT_API_KEY")
+            api_key=os.getenv("QDRANT_API_KEY"),
         )
     return qdrant
 
 
 def retrieve(query, limit=5):
 
-    model = get_model()
-    client = get_qdrant()
+    try:
+        model = get_model()
+        client = get_qdrant()
 
-    query_vector = model.encode(query).tolist()
+        query_vector = model.encode(query).tolist()
 
-    results = client.search(
-        collection_name=COLLECTION,
-        query_vector=query_vector,
-        limit=limit
-    )
+        results = client.search(
+            collection_name=COLLECTION,
+            query_vector=query_vector,
+            limit=limit
+        )
 
-    contexts = []
-    sources = []
+        contexts = []
+        sources = []
 
-    for r in results:
-        payload = r.payload
+        for r in results:
 
-        contexts.append(payload.get("content", ""))
+            payload = r.payload or {}
 
-        url = payload.get("url")
-        if url and url not in sources:
-            sources.append(url)
+            content = payload.get("content", "")
+            url = payload.get("url")
 
-    return contexts, sources
+            if content:
+                contexts.append(content)
+
+            if url and url not in sources:
+                sources.append(url)
+
+        return contexts, sources
+
+    except Exception as e:
+        print("Retriever error:", e)
+        return [], []

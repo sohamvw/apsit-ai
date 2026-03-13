@@ -12,7 +12,6 @@ import os
 
 app = FastAPI()
 
-# CORS for frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -24,17 +23,11 @@ app.add_middleware(
 client = None
 
 
-# -----------------------------
-# Request schema for Swagger
-# -----------------------------
 class QueryRequest(BaseModel):
     query: str
     session_id: Optional[str] = "default"
 
 
-# -----------------------------
-# Gemini lazy loader
-# -----------------------------
 def get_gemini():
     global client
     if client is None:
@@ -43,32 +36,25 @@ def get_gemini():
     return client
 
 
-# -----------------------------
-# Health endpoint
-# -----------------------------
 @app.get("/health")
 def health():
     return {"status": "assistant-running"}
 
 
-# -----------------------------
-# Main query endpoint
-# -----------------------------
 @app.post("/query")
 async def query(request: QueryRequest):
 
     q = request.query
     session_id = request.session_id
 
-    # detect language
+    print("Query received:", q)
+
     lang = detect_lang(q)
 
-    # retrieve documents
     contexts, sources = retrieve(q)
 
-    combined_context = "\n\n".join(contexts)
+    combined_context = "\n\n".join(contexts) if contexts else "No context found."
 
-    # conversation memory
     history = get(session_id)
 
     history_text = ""
@@ -94,14 +80,20 @@ User Question:
 {q}
 """
 
-    gemini = get_gemini()
+    try:
 
-    response = gemini.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=prompt
-    )
+        gemini = get_gemini()
 
-    answer = response.text
+        response = gemini.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt
+        )
+
+        answer = response.text
+
+    except Exception as e:
+        print("Gemini error:", e)
+        answer = "AI response failed. Please try again."
 
     add(session_id, {"q": q, "a": answer})
 
