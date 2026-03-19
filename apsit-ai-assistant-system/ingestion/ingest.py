@@ -1,128 +1,91 @@
 import os
-import requests
-from bs4 import BeautifulSoup
+from dotenv import load_dotenv
+from uuid import uuid4
+from tqdm import tqdm
+
 from sentence_transformers import SentenceTransformer
 from qdrant_client import QdrantClient
 from qdrant_client.models import VectorParams, Distance
-from uuid import uuid4
-from pypdf import PdfReader
-from urls import URLS
-from tqdm import tqdm
-import tempfile
+
+from crawler import crawl
+from utils import chunk_text
+
+load_dotenv()
 
 QDRANT_URL = os.getenv("QDRANT_URL")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
 
-COLLECTION_NAME = "apsit_test"
+COLLECTION = "apsit_final"
 
-print("🔄 Loading embedding model...")
-model = SentenceTransformer("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
+print("🔌 Connecting Qdrant...")
+client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
 
-qdrant = QdrantClient(
-    url=QDRANT_URL,
-    api_key=QDRANT_API_KEY,
-)
+# 🔥 RESET COLLECTION
+try:
+    client.delete_collection(COLLECTION)
+except:
+    pass
 
-# ✅ Recreate collection
-print("⚡ Creating Qdrant collection...")
-qdrant.recreate_collection(
-    collection_name=COLLECTION_NAME,
+client.create_collection(
+    collection_name=COLLECTION,
     vectors_config=VectorParams(size=384, distance=Distance.COSINE),
 )
 
+print("🧠 Loading model...")
+model = SentenceTransformer("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
 
-def fetch_html(url):
+
+def safe_upsert(points):
     try:
-        res = requests.get(url, timeout=10)
-        soup = BeautifulSoup(res.text, "html.parser")
-
-        for tag in soup(["script", "style", "nav", "footer"]):
-            tag.extract()
-
-        return soup.get_text(separator=" ", strip=True)
-
+        client.upsert(
+            collection_name=COLLECTION,
+            points=points,
+            wait=True
+        )
     except Exception as e:
-        print(f"❌ HTML error: {url} -> {e}")
-        return ""
-
-
-def fetch_pdf(url):
-    try:
-        res = requests.get(url, timeout=15)
-
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as f:
-            f.write(res.content)
-            reader = PdfReader(f.name)
-
-            text = ""
-            for page in reader.pages:
-                text += page.extract_text() or ""
-
-        return text
-
-    except Exception as e:
-        print(f"❌ PDF error: {url} -> {e}")
-        return ""
-
-
-def chunk_text(text, size=400):
-    words = text.split()
-    for i in range(0, len(words), size):
-        yield " ".join(words[i:i + size])
-
-
-def process_url(url):
-    print(f"\n🌐 Processing: {url}")
-
-    if url.endswith(".pdf"):
-        text = fetch_pdf(url)
-        doc_type = "pdf"
-    else:
-        text = fetch_html(url)
-        doc_type = "html"
-
-    chunks = list(chunk_text(text))
-
-    points = []
-
-    for chunk in chunks:
-        vector = model.encode(chunk).tolist()
-
-        points.append({
-            "id": str(uuid4()),
-            "vector": vector,
-            "payload": {
-                "text": chunk,
-                "source": url,
-                "type": doc_type
-            }
-        })
-
-    return points
+        print("❌ Skipped batch:", e)
 
 
 def ingest():
-    all_points = []
 
-    for url in tqdm(URLS):
-        points = process_url(url)
-        all_points.extend(points)
+    print("🚀 Crawling...")
+    pages = crawl("https://www.apsit.edu.in", max_pages=3000)
 
-        # ✅ Batch upload (important)
-        if len(all_points) > 500:
-            qdrant.upsert(
-                collection_name=COLLECTION_NAME,
-                points=all_points
-            )
-            all_points = []
+    batch = []
+    BATCH_SIZE = 15  # 🔥 FIX TIMEOUT
 
-    if all_points:
-        qdrant.upsert(
-            collection_name=COLLECTION_NAME,
-            points=all_points
-        )
+    for page in tqdm(pages):
 
-    print("\n✅ INGESTION COMPLETE")
+        # ❌ SKIP PDFs (avoid garbage text)
+        if page["url"].endswith(".pdf"):
+            continue
+
+        chunks = chunk_text(page["text"])
+
+        for chunk in chunks:
+
+            vector = model.encode(chunk).tolist()
+
+            batch.append({
+                "id": str(uuid4()),
+                "vector": vector,
+                "payload": {
+                    "content": chunk,
+                    "url": page["url"],
+                    "images": page["images"],
+                    "pdfs": page["pdfs"],
+                    "videos": page["videos"]
+                }
+            })
+
+            if len(batch) >= BATCH_SIZE:
+                safe_upsert(batch)
+                batch = []
+
+    if batch:
+        safe_upsert(batch)
+
+    print("\n✅ CLEAN INGESTION COMPLETE")
 
 
 if __name__ == "__main__":
