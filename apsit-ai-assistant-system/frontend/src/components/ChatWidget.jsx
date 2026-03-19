@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 
-const BACKEND_URL = "https://apsit-ai.onrender.com";
-
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
 export default function ChatWidget() {
 
   const [query, setQuery] = useState("");
