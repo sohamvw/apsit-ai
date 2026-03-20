@@ -14,7 +14,7 @@ import os
 # ✅ LOAD ENV
 load_dotenv()
 
-# 🔥 FORCE REMOVE GOOGLE_API_KEY (CRITICAL FIX)
+# 🔥 REMOVE GOOGLE_API_KEY CONFLICT
 if "GOOGLE_API_KEY" in os.environ:
     print("⚠️ Removing GOOGLE_API_KEY from environment")
     del os.environ["GOOGLE_API_KEY"]
@@ -35,23 +35,23 @@ client = None
 class QueryRequest(BaseModel):
     query: str
     session_id: Optional[str] = "default"
+    language: Optional[str] = "auto"   # ✅ FIXED
 
 
+# =========================
+# 🔗 GEMINI
+# =========================
 def get_gemini():
     global client
     if client is None:
         print("🔗 Connecting to Gemini...")
 
-        print("🔍 ENV DEBUG:")
-        print("GEMINI_API_KEY =", os.getenv("GEMINI_API_KEY"))
-        print("GOOGLE_API_KEY =", os.getenv("GOOGLE_API_KEY"))
-
         api_key = os.getenv("GEMINI_API_KEY")
 
         if not api_key:
-            raise Exception("❌ GEMINI_API_KEY not found in environment")
+            raise Exception("❌ GEMINI_API_KEY not found")
 
-        print("✅ Using Gemini key:", api_key[:10], "...")
+        print("✅ Gemini connected")
 
         client = genai.Client(api_key=api_key)
 
@@ -63,6 +63,14 @@ def health():
     return {"status": "assistant-running"}
 
 
+@app.on_event("startup")
+def startup():
+    print("🚀 Backend started successfully")
+
+
+# =========================
+# 🚀 MAIN QUERY
+# =========================
 @app.post("/query")
 async def query(request: QueryRequest):
 
@@ -71,13 +79,25 @@ async def query(request: QueryRequest):
 
     print("\n🔍 Query received:", q)
 
-    # 🌐 Detect language
-    lang = detect_lang(q)
+    # 🌐 LANGUAGE LOGIC (FIXED)
+    if request.language and request.language != "auto":
+        lang = request.language
+    else:
+        lang = detect_lang(q)
 
-    # 🔎 Retrieve context
-    contexts, sources = retrieve(q)
+    # 🔎 RETRIEVE (SAFE)
+    try:
+        contexts, sources = retrieve(q)
+    except Exception as e:
+        print("❌ Retrieval failed:", e)
+        return {
+            "answer": "System is busy. Try again.",
+            "language": "en",
+            "sources": [],
+            "pdfs": []
+        }
 
-    # 🔥 FILTER BAD DATA (IMPORTANT FIX)
+    # 🔥 CLEAN CONTEXT
     clean_contexts = [
         c for c in contexts
         if "Not Acceptable" not in c and len(c.strip()) > 30
@@ -85,14 +105,14 @@ async def query(request: QueryRequest):
 
     combined_context = "\n\n".join(clean_contexts)
 
-    # 🧠 Session memory
+    # 🧠 MEMORY
     history = get(session_id)
 
     history_text = ""
     for h in history:
         history_text += f"User: {h['q']}\nAssistant: {h['a']}\n"
 
-    # ⚠️ NO CONTEXT GUARD
+    # ❌ NO DATA CASE
     if not combined_context:
         answer = "I could not find this information in APSIT documents."
 
@@ -105,7 +125,7 @@ async def query(request: QueryRequest):
             "pdfs": []
         }
 
-    # 🧾 Prompt
+    # 🧾 PROMPT
     prompt = f"""
 You are APSIT Official AI Assistant.
 
@@ -125,6 +145,7 @@ User Question:
 {q}
 """
 
+    # 🤖 GEMINI
     try:
         gemini = get_gemini()
 
@@ -139,10 +160,10 @@ User Question:
         print("❌ Gemini error:", e)
         answer = "AI response failed. Please try again."
 
-    # 💾 Save memory
+    # 💾 SAVE MEMORY
     add(session_id, {"q": q, "a": answer})
 
-    # 📄 Extract PDFs
+    # 📄 PDFs
     pdf_links = [url for url in sources if url.endswith(".pdf")]
 
     return {
@@ -151,5 +172,3 @@ User Question:
         "sources": sources,
         "pdfs": pdf_links
     }
-
-    lang = request.language if hasattr(request, "language") else detect_lang(q)

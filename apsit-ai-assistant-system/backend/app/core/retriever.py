@@ -2,24 +2,23 @@ from sentence_transformers import SentenceTransformer
 from qdrant_client import QdrantClient
 import os
 
-model = None
+# =========================
+# 🔥 LOAD MODEL ONCE (CRITICAL FIX)
+# =========================
+print("🧠 Loading embedding model...")
+
+MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+
+model = SentenceTransformer(
+    MODEL_NAME,
+    use_auth_token=os.getenv("HF_TOKEN")  # optional but recommended
+)
+
+print("✅ Model loaded")
+
 qdrant = None
 
 COLLECTION = "apsit_final"
-
-
-# =========================
-# 🔧 LOAD MODEL
-# =========================
-def get_model():
-    global model
-    if model is None:
-        print("🔄 Loading embedding model...")
-        model = SentenceTransformer(
-            "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-        )
-        print("✅ Embedding dimension:", model.get_sentence_embedding_dimension())
-    return model
 
 
 # =========================
@@ -45,13 +44,11 @@ def retrieve(query, limit=5):
     try:
         print(f"\n🔍 Query: {query}")
 
-        model = get_model()
         client = get_qdrant()
 
-        # 🔥 Encode query
+        # 🔥 Encode query (NO RELOAD NOW)
         query_vector = model.encode(query).tolist()
 
-        # 🔥 SEARCH
         results = client.query_points(
             collection_name=COLLECTION,
             query=query_vector,
@@ -66,7 +63,6 @@ def retrieve(query, limit=5):
         for r in results:
             payload = r.payload or {}
 
-            # ✅ FIXED KEYS (MATCH INGESTION)
             text = payload.get("content", "")
             source = payload.get("url")
 
