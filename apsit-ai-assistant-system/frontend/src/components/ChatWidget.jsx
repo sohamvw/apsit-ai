@@ -1,82 +1,216 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
+
+const QUICK_DEFAULT = [
+  "Admissions",
+  "Placements",
+  "Courses Offered",
+  "Facilities"
+];
+
 export default function ChatWidget() {
 
   const [query, setQuery] = useState("");
   const [response, setResponse] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [topQueries, setTopQueries] = useState(QUICK_DEFAULT);
+  const [language, setLanguage] = useState("auto");
 
-  const session_id = "demo-session";
+  const session_id = "apsit-session";
 
-  const sendQuery = async () => {
+  // 🔥 Track popular queries (local frequency)
+  const updateTopQueries = (q) => {
+    let stored = JSON.parse(localStorage.getItem("topQueries")) || {};
 
-    const res = await fetch(`${BACKEND_URL}/query`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        query,
-        session_id
-      })
-    });
+    stored[q] = (stored[q] || 0) + 1;
 
-    const data = await res.json();
+    localStorage.setItem("topQueries", JSON.stringify(stored));
 
-    setResponse(data);
+    const sorted = Object.entries(stored)
+      .sort((a, b) => b[1] - a[1])
+      .map(x => x[0])
+      .slice(0, 4);
+
+    setTopQueries(sorted.length ? sorted : QUICK_DEFAULT);
+  };
+
+  useEffect(() => {
+    updateTopQueries("");
+  }, []);
+
+  const sendQuery = async (customQuery) => {
+
+    const finalQuery = customQuery || query;
+    if (!finalQuery) return;
+
+    setLoading(true);
+
+    try {
+      const res = await fetch(`${BACKEND_URL}/query`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          query: finalQuery,
+          session_id,
+          language
+        })
+      });
+
+      const data = await res.json();
+
+      setResponse(data);
+      updateTopQueries(finalQuery);
+      setQuery("");
+
+    } catch (e) {
+      console.error(e);
+    }
+
+    setLoading(false);
   };
 
   return (
 
     <div style={{
-      position:"fixed",
-      bottom:"20px",
-      right:"20px",
-      background:"#fff",
-      padding:"15px",
-      borderRadius:"10px",
-      boxShadow:"0 0 10px #ccc",
-      width:"320px"
+      position: "fixed",
+      bottom: "20px",
+      right: "20px",
+      width: "340px",
+      fontFamily: "Arial",
+      zIndex: 9999
     }}>
 
-      <h4>APSIT AI Assistant</h4>
+      {/* HEADER */}
+      <div style={{
+        background: "#8B4513",  // APSIT brown
+        color: "#fff",
+        padding: "10px",
+        borderTopLeftRadius: "12px",
+        borderTopRightRadius: "12px"
+      }}>
+        <b>APSIT Virtual Assistant</b>
 
-      <input
-        value={query}
-        onChange={(e)=>setQuery(e.target.value)}
-        placeholder="Ask about APSIT..."
-        style={{width:"100%"}}
-      />
+        <div style={{ fontSize: "12px" }}>
+          Online | Instant replies
+        </div>
+      </div>
 
-      <button
-        onClick={sendQuery}
-        style={{marginTop:"10px"}}
-      >
-        Send
-      </button>
+      {/* BODY */}
+      <div style={{
+        background: "#f9f6f2",
+        padding: "10px",
+        border: "1px solid #ddd"
+      }}>
 
-      {response && (
-
-        <div style={{marginTop:"15px"}}>
-
-          <p>{response.answer}</p>
-
-          {response.pdfs.length > 0 && (
-            <>
-              <h5>Documents</h5>
-
-              {response.pdfs.map((pdf, i) => (
-                <div key={i}>
-                  <a href={pdf} target="_blank" rel="noreferrer">
-                    View PDF
-                  </a>
-                </div>
-              ))}
-
-            </>
-          )}
-
+        <div style={{
+          background: "#fff",
+          padding: "8px",
+          borderRadius: "8px",
+          marginBottom: "10px"
+        }}>
+          👋 Hello! Ask me anything about APSIT.
         </div>
 
-      )}
+        {/* QUICK ACTIONS */}
+        <div style={{ marginBottom: "10px" }}>
+          {topQueries.map((q, i) => (
+            <button
+              key={i}
+              onClick={() => sendQuery(q)}
+              style={{
+                margin: "4px",
+                padding: "6px 10px",
+                borderRadius: "20px",
+                border: "1px solid #8B4513",
+                background: "#fff",
+                cursor: "pointer"
+              }}
+            >
+              {q}
+            </button>
+          ))}
+        </div>
+
+        {/* RESPONSE */}
+        {response && (
+          <div style={{
+            background: "#fff",
+            padding: "8px",
+            borderRadius: "8px",
+            marginBottom: "10px"
+          }}>
+            {response.answer}
+
+            {response.pdfs?.length > 0 && (
+              <>
+                <div style={{ marginTop: "10px", fontWeight: "bold" }}>
+                  Documents:
+                </div>
+
+                {response.pdfs.map((pdf, i) => (
+                  <div key={i}>
+                    <a href={pdf} target="_blank">📄 View PDF</a>
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* LANGUAGE SELECTOR */}
+        <div style={{ marginBottom: "8px" }}>
+          🌐
+          <select
+            value={language}
+            onChange={(e) => setLanguage(e.target.value)}
+            style={{ marginLeft: "5px" }}
+          >
+            <option value="auto">Auto</option>
+            <option value="en">English</option>
+            <option value="hi">Hindi</option>
+            <option value="mr">Marathi</option>
+          </select>
+        </div>
+
+        {/* INPUT */}
+        <div style={{ display: "flex" }}>
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Type your message..."
+            style={{
+              flex: 1,
+              padding: "8px",
+              borderRadius: "8px",
+              border: "1px solid #ccc"
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") sendQuery();
+            }}
+          />
+
+          <button
+            onClick={() => sendQuery()}
+            style={{
+              marginLeft: "5px",
+              background: "#8B4513",
+              color: "#fff",
+              border: "none",
+              borderRadius: "8px",
+              padding: "8px 10px",
+              cursor: "pointer"
+            }}
+          >
+            ➤
+          </button>
+        </div>
+
+        {loading && <div style={{ fontSize: "12px" }}>Thinking...</div>}
+
+      </div>
 
     </div>
   );

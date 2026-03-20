@@ -151,3 +151,5 @@ User Question:
         "sources": sources,
         "pdfs": pdf_links
     }
+
+    lang = request.language if hasattr(request, "language") else detect_lang(q)
