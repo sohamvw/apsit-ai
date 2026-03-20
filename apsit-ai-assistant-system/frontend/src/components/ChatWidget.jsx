@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
+const BACKEND_URL = "https://apsit-ai-production.up.railway.app";
 
 const QUICK = [
   "Admissions",
