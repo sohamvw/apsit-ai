@@ -11,12 +11,9 @@ from google import genai
 from dotenv import load_dotenv
 import os
 
-# ✅ LOAD ENV
 load_dotenv()
 
-# 🔥 REMOVE GOOGLE_API_KEY CONFLICT
 if "GOOGLE_API_KEY" in os.environ:
-    print("⚠️ Removing GOOGLE_API_KEY from environment")
     del os.environ["GOOGLE_API_KEY"]
 
 app = FastAPI()
@@ -35,23 +32,15 @@ client = None
 class QueryRequest(BaseModel):
     query: str
     session_id: Optional[str] = "default"
-    language: Optional[str] = "auto"   # ✅ FIXED
+    language: Optional[str] = "auto"
 
 
-# =========================
-# 🔗 GEMINI
-# =========================
 def get_gemini():
     global client
     if client is None:
-        print("🔗 Connecting to Gemini...")
-
         api_key = os.getenv("GEMINI_API_KEY")
-
         if not api_key:
-            raise Exception("❌ GEMINI_API_KEY not found")
-
-        print("✅ Gemini connected")
+            raise Exception("GEMINI_API_KEY missing")
 
         client = genai.Client(api_key=api_key)
 
@@ -63,89 +52,87 @@ def health():
     return {"status": "assistant-running"}
 
 
-@app.on_event("startup")
-def startup():
-    print("🚀 Backend started successfully")
-
-
-# =========================
-# 🚀 MAIN QUERY
-# =========================
 @app.post("/query")
 async def query(request: QueryRequest):
 
     q = request.query
     session_id = request.session_id
 
-    print("\n🔍 Query received:", q)
-
-    # 🌐 LANGUAGE LOGIC (FIXED)
+    # =========================
+    # 🌐 LANGUAGE CONTROL
+    # =========================
     if request.language and request.language != "auto":
         lang = request.language
     else:
         lang = detect_lang(q)
 
-    # 🔎 RETRIEVE (SAFE)
+    if lang == "mr":
+        lang_instruction = "Answer strictly in Marathi. Do NOT use English."
+    elif lang == "hi":
+        lang_instruction = "Answer strictly in Hindi. Do NOT use English."
+    elif lang == "en":
+        lang_instruction = "Answer strictly in English."
+    else:
+        lang_instruction = "Answer in the same language as the question."
+
+    # =========================
+    # 🔎 RETRIEVE
+    # =========================
     try:
         contexts, sources = retrieve(q)
-    except Exception as e:
-        print("❌ Retrieval failed:", e)
+    except Exception:
         return {
-            "answer": "System is busy. Try again.",
+            "answer": "System busy. Try again.",
             "language": "en",
             "sources": [],
-            "pdfs": []
+            "pdfs": [],
+            "images": []
         }
 
-    # 🔥 CLEAN CONTEXT
-    clean_contexts = [
-        c for c in contexts
-        if "Not Acceptable" not in c and len(c.strip()) > 30
-    ]
-
+    clean_contexts = [c for c in contexts if len(c.strip()) > 30]
     combined_context = "\n\n".join(clean_contexts)
 
-    # 🧠 MEMORY
     history = get(session_id)
+    history_text = "\n".join(
+        [f"User: {h['q']}\nAssistant: {h['a']}" for h in history]
+    )
 
-    history_text = ""
-    for h in history:
-        history_text += f"User: {h['q']}\nAssistant: {h['a']}\n"
-
-    # ❌ NO DATA CASE
     if not combined_context:
         answer = "I could not find this information in APSIT documents."
-
         add(session_id, {"q": q, "a": answer})
 
         return {
             "answer": answer,
             "language": lang,
             "sources": [],
-            "pdfs": []
+            "pdfs": [],
+            "images": []
         }
 
-    # 🧾 PROMPT
+    # =========================
+    # 🧾 PROMPT (UPDATED)
+    # =========================
     prompt = f"""
 You are APSIT Official AI Assistant.
 
-Strict Rules:
-- Answer ONLY using the provided context
-- Do NOT hallucinate
-- If unsure → say "I could not find this information in APSIT documents."
-- Keep answer clear and structured
+Rules:
+- Answer only from context
+- Do not hallucinate
+- Use simple language
+- Format using bullet points
+- Add short intro
+- Remove symbols like ** or *
+- Do NOT mix languages
 
-Conversation History:
-{history_text}
+{lang_instruction}
 
 Context:
 {combined_context}
 
-User Question:
+Question:
 {q}
 """
 
-    # 🤖 GEMINI
     try:
         gemini = get_gemini()
 
@@ -156,19 +143,18 @@ User Question:
 
         answer = getattr(response, "text", "No response generated.")
 
-    except Exception as e:
-        print("❌ Gemini error:", e)
-        answer = "AI response failed. Please try again."
+    except Exception:
+        answer = "AI response failed."
 
-    # 💾 SAVE MEMORY
     add(session_id, {"q": q, "a": answer})
 
-    # 📄 PDFs
-    pdf_links = [url for url in sources if url.endswith(".pdf")]
+    pdf_links = [u for u in sources if u.endswith(".pdf")]
+    image_links = [u for u in sources if u.endswith((".jpg", ".png", ".jpeg"))]
 
     return {
         "answer": answer,
         "language": lang,
         "sources": sources,
-        "pdfs": pdf_links
+        "pdfs": pdf_links,
+        "images": image_links
     }
