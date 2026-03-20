@@ -1,49 +1,29 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
+const BACKEND_URL = "https://apsit-ai.onrender.com";
 
-const QUICK_DEFAULT = [
+const QUICK = [
   "Admissions",
   "Placements",
-  "Courses Offered",
-  "Facilities"
+  "Courses",
+  "Fees"
 ];
 
-export default function ChatWidget() {
+export default function ChatWidget({ close }) {
 
   const [query, setQuery] = useState("");
-  const [response, setResponse] = useState(null);
+  const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [topQueries, setTopQueries] = useState(QUICK_DEFAULT);
   const [language, setLanguage] = useState("auto");
 
-  const session_id = "apsit-session";
+  const sendQuery = async (q) => {
 
-  // 🔥 Track popular queries (local frequency)
-  const updateTopQueries = (q) => {
-    let stored = JSON.parse(localStorage.getItem("topQueries")) || {};
+    const text = q || query;
+    if (!text) return;
 
-    stored[q] = (stored[q] || 0) + 1;
-
-    localStorage.setItem("topQueries", JSON.stringify(stored));
-
-    const sorted = Object.entries(stored)
-      .sort((a, b) => b[1] - a[1])
-      .map(x => x[0])
-      .slice(0, 4);
-
-    setTopQueries(sorted.length ? sorted : QUICK_DEFAULT);
-  };
-
-  useEffect(() => {
-    updateTopQueries("");
-  }, []);
-
-  const sendQuery = async (customQuery) => {
-
-    const finalQuery = customQuery || query;
-    if (!finalQuery) return;
-
+    // add user message
+    setMessages(prev => [...prev, { role: "user", text }]);
+    setQuery("");
     setLoading(true);
 
     try {
@@ -53,163 +33,155 @@ export default function ChatWidget() {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          query: finalQuery,
-          session_id,
+          query: text,
+          session_id: "apsit",
           language
         })
       });
 
       const data = await res.json();
 
-      setResponse(data);
-      updateTopQueries(finalQuery);
-      setQuery("");
+      setMessages(prev => [
+        ...prev,
+        { role: "bot", text: data.answer }
+      ]);
 
     } catch (e) {
-      console.error(e);
+      setMessages(prev => [
+        ...prev,
+        { role: "bot", text: "Server error. Try again." }
+      ]);
     }
 
     setLoading(false);
   };
 
   return (
-
     <div style={{
       position: "fixed",
-      bottom: "20px",
+      bottom: "90px",
       right: "20px",
-      width: "340px",
-      fontFamily: "Arial",
+      width: "350px",
+      background: "#fff",
+      borderRadius: "12px",
+      boxShadow: "0 5px 20px rgba(0,0,0,0.2)",
+      overflow: "hidden",
       zIndex: 9999
     }}>
 
       {/* HEADER */}
       <div style={{
-        background: "#8B4513",  // APSIT brown
+        background: "#d32f2f",
         color: "#fff",
-        padding: "10px",
-        borderTopLeftRadius: "12px",
-        borderTopRightRadius: "12px"
+        padding: "12px",
+        display: "flex",
+        justifyContent: "space-between"
       }}>
-        <b>APSIT Virtual Assistant</b>
+        <b>APSIT Assistant</b>
 
-        <div style={{ fontSize: "12px" }}>
-          Online | Instant replies
-        </div>
+        <span style={{ cursor: "pointer" }} onClick={close}>✖</span>
       </div>
 
-      {/* BODY */}
-      <div style={{
-        background: "#f9f6f2",
-        padding: "10px",
-        border: "1px solid #ddd"
-      }}>
-
-        <div style={{
-          background: "#fff",
-          padding: "8px",
-          borderRadius: "8px",
-          marginBottom: "10px"
-        }}>
-          👋 Hello! Ask me anything about APSIT.
-        </div>
-
-        {/* QUICK ACTIONS */}
-        <div style={{ marginBottom: "10px" }}>
-          {topQueries.map((q, i) => (
-            <button
-              key={i}
-              onClick={() => sendQuery(q)}
-              style={{
-                margin: "4px",
-                padding: "6px 10px",
-                borderRadius: "20px",
-                border: "1px solid #8B4513",
-                background: "#fff",
-                cursor: "pointer"
-              }}
-            >
-              {q}
-            </button>
-          ))}
-        </div>
-
-        {/* RESPONSE */}
-        {response && (
-          <div style={{
-            background: "#fff",
-            padding: "8px",
-            borderRadius: "8px",
-            marginBottom: "10px"
-          }}>
-            {response.answer}
-
-            {response.pdfs?.length > 0 && (
-              <>
-                <div style={{ marginTop: "10px", fontWeight: "bold" }}>
-                  Documents:
-                </div>
-
-                {response.pdfs.map((pdf, i) => (
-                  <div key={i}>
-                    <a href={pdf} target="_blank">📄 View PDF</a>
-                  </div>
-                ))}
-              </>
-            )}
-          </div>
-        )}
-
-        {/* LANGUAGE SELECTOR */}
-        <div style={{ marginBottom: "8px" }}>
-          🌐
-          <select
-            value={language}
-            onChange={(e) => setLanguage(e.target.value)}
-            style={{ marginLeft: "5px" }}
-          >
-            <option value="auto">Auto</option>
-            <option value="en">English</option>
-            <option value="hi">Hindi</option>
-            <option value="mr">Marathi</option>
-          </select>
-        </div>
-
-        {/* INPUT */}
-        <div style={{ display: "flex" }}>
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Type your message..."
-            style={{
-              flex: 1,
-              padding: "8px",
-              borderRadius: "8px",
-              border: "1px solid #ccc"
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") sendQuery();
-            }}
-          />
-
+      {/* QUICK BUTTONS */}
+      <div style={{ padding: "10px" }}>
+        {QUICK.map((q, i) => (
           <button
-            onClick={() => sendQuery()}
+            key={i}
+            onClick={() => sendQuery(q)}
             style={{
-              marginLeft: "5px",
-              background: "#8B4513",
-              color: "#fff",
-              border: "none",
-              borderRadius: "8px",
-              padding: "8px 10px",
+              margin: "4px",
+              padding: "6px 10px",
+              borderRadius: "20px",
+              border: "1px solid #d32f2f",
+              background: "#fff",
               cursor: "pointer"
             }}
           >
-            ➤
+            {q}
           </button>
-        </div>
+        ))}
+      </div>
 
-        {loading && <div style={{ fontSize: "12px" }}>Thinking...</div>}
+      {/* CHAT AREA */}
+      <div style={{
+        height: "250px",
+        overflowY: "auto",
+        padding: "10px",
+        background: "#f5f5f5"
+      }}>
+        {messages.map((m, i) => (
+          <div
+            key={i}
+            style={{
+              textAlign: m.role === "user" ? "right" : "left",
+              marginBottom: "8px"
+            }}
+          >
+            <span style={{
+              display: "inline-block",
+              padding: "8px",
+              borderRadius: "10px",
+              background: m.role === "user" ? "#d32f2f" : "#fff",
+              color: m.role === "user" ? "#fff" : "#000"
+            }}>
+              {m.text}
+            </span>
+          </div>
+        ))}
 
+        {loading && <div>Typing...</div>}
+      </div>
+
+      {/* INPUT */}
+      <div style={{
+        display: "flex",
+        padding: "10px",
+        borderTop: "1px solid #eee"
+      }}>
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Type message..."
+          style={{
+            flex: 1,
+            padding: "8px",
+            borderRadius: "8px",
+            border: "1px solid #ccc"
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") sendQuery();
+          }}
+        />
+
+        <button
+          onClick={() => sendQuery()}
+          style={{
+            marginLeft: "5px",
+            background: "#d32f2f",
+            color: "#fff",
+            border: "none",
+            borderRadius: "8px",
+            padding: "8px 12px",
+            cursor: "pointer"
+          }}
+        >
+          ➤
+        </button>
+      </div>
+
+      {/* LANGUAGE */}
+      <div style={{ padding: "5px 10px" }}>
+        🌐
+        <select
+          value={language}
+          onChange={(e) => setLanguage(e.target.value)}
+          style={{ marginLeft: "5px" }}
+        >
+          <option value="auto">Auto</option>
+          <option value="en">English</option>
+          <option value="hi">Hindi</option>
+          <option value="mr">Marathi</option>
+        </select>
       </div>
 
     </div>
