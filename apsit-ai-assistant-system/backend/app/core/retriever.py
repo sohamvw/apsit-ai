@@ -1,33 +1,25 @@
+"""
+APSIT AI — Retriever (Upgraded)
+Returns text contexts, sources, AND media (images, pdfs, videos)
+already stored in each Qdrant point payload from ingest.py.
+"""
+
 from sentence_transformers import SentenceTransformer
 from qdrant_client import QdrantClient
 import os
 
-# =========================
-# 🔥 LOAD MODEL ONCE (CRITICAL FIX)
-# =========================
 print("🧠 Loading embedding model...")
-
 MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
-
-model = SentenceTransformer(
-    MODEL_NAME,
-    use_auth_token=os.getenv("HF_TOKEN")  # optional but recommended
-)
-
+model = SentenceTransformer(MODEL_NAME, use_auth_token=os.getenv("HF_TOKEN"))
 print("✅ Model loaded")
 
-qdrant = None
-
+qdrant     = None
 COLLECTION = "apsit_final"
 
 
-# =========================
-# 🔌 QDRANT CONNECTION
-# =========================
 def get_qdrant():
     global qdrant
     if qdrant is None:
-        print("🔌 Connecting to Qdrant...")
         qdrant = QdrantClient(
             url=os.getenv("QDRANT_URL"),
             api_key=os.getenv("QDRANT_API_KEY"),
@@ -36,17 +28,13 @@ def get_qdrant():
     return qdrant
 
 
-# =========================
-# 🔍 RETRIEVE
-# =========================
-def retrieve(query, limit=5):
-
+def retrieve(query: str, limit: int = 5) -> tuple:
+    """
+    Returns: (contexts, sources, images, pdfs, videos)
+    All media comes directly from the Qdrant payload — no extra fetch needed.
+    """
     try:
-        print(f"\n🔍 Query: {query}")
-
-        client = get_qdrant()
-
-        # 🔥 Encode query (NO RELOAD NOW)
+        client       = get_qdrant()
         query_vector = model.encode(query).tolist()
 
         results = client.query_points(
@@ -55,28 +43,34 @@ def retrieve(query, limit=5):
             limit=limit
         ).points
 
-        contexts = []
-        sources = []
-
-        print("📄 Retrieved chunks:")
+        contexts, sources, images, pdfs, videos = [], [], [], [], []
 
         for r in results:
             payload = r.payload or {}
-
-            text = payload.get("content", "")
-            source = payload.get("url")
+            text    = payload.get("content", "")
+            source  = payload.get("url")
 
             if text and len(text) > 30:
                 contexts.append(text)
-                print(" -", text[:120])
 
             if source and source not in sources:
                 sources.append(source)
 
-        print(f"✅ Retrieved {len(contexts)} chunks\n")
+            for img in payload.get("images", []):
+                if img and img not in images:
+                    images.append(img)
 
-        return contexts, sources
+            for pdf in payload.get("pdfs", []):
+                if pdf and pdf not in pdfs:
+                    pdfs.append(pdf)
+
+            for vid in payload.get("videos", []):
+                if vid and vid not in videos:
+                    videos.append(vid)
+
+        print(f"✅ {len(contexts)} chunks | {len(images)} imgs | {len(pdfs)} pdfs | {len(videos)} videos")
+        return contexts, sources, images, pdfs, videos
 
     except Exception as e:
         print("❌ Retriever error:", e)
-        return [], []
+        return [], [], [], [], []
