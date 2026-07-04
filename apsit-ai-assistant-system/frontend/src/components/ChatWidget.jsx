@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 
-const BACKEND_URL = import.meta.env.VITE_API_URL;
+const BACKEND_URL = import.meta.env.VERCE_API_URL;
 
 // ── Session ID persisted in sessionStorage (like session cookie) ─────────
 function getSessionId() {
