@@ -327,7 +327,7 @@ RULES:
 - Provide links to official APSIT pages when relevant. Do not link to external sites unless they are official APSIT resources.
 - If the question is about fees, admission, or Moodle, provide the relevant portal link.
 - dont provide other links while answering the question. Only provide links if they are relevant to the answer.like about admission then admission portal link, about fees then payment portal link, about moodle then moodle portal link.
-
+- dont provide pdfs , images ,and yt links in the answer. Only provide the html or the text.
 CONVERSATION HISTORY:
 {history_text if history_text else "No prior conversation."}
 
