@@ -35,7 +35,12 @@ from app.core.callup import match_callup
 from app.core.moodle import fetch_moodle_announcements
 
 load_dotenv()
-
+# ======================================================
+# RESPONSE MODE
+# True  = Text only
+# False = Rich response (images, pdfs, videos, links)
+# ======================================================
+TEXT_MODE = True
 # ──────────────────────────────────────────────────────────
 # APP
 # ──────────────────────────────────────────────────────────
@@ -234,18 +239,25 @@ async def query(request: QueryRequest, req: Request):
     callup = match_callup(q)
     if callup:
         print(f"📋 Callup match for: {q}")
-        result = {
-            "answer":     callup["answer"],
-            "language":   lang,
-            "sources":    [],
-            "images":     callup.get("images", []),
-            "pdfs":       callup.get("pdfs", []),
-            "videos":     callup.get("videos", []),
-            "links":      callup.get("links", []),
-            "from_cache": False,
-        }
-        cache_set(q, **{k: result[k] for k in ["answer","images","pdfs","videos","sources"]})
-        add_turn(session_id, {"q": q, "a": callup["answer"]})
+        if TEXT_MODE:
+            result = {
+                "answer": callup["answer"],
+                "language": lang,
+                "sources": [],
+                "from_cache": False,
+            }
+        else:
+            result = {
+                "answer":     callup["answer"],
+                "language":   lang,
+                "sources":    [],
+                "images":     callup.get("images", []),
+                "pdfs":       callup.get("pdfs", []),
+                "videos":     callup.get("videos", []),
+                "links":      callup.get("links", []),
+                "from_cache": False,
+            }
+        add_turn(session_id, {"q": q, "a": result["answer"]})
         return result
 
     # ── smart redirect check ─────────────────────────────────
@@ -292,16 +304,11 @@ async def query(request: QueryRequest, req: Request):
         )
         add_turn(session_id, {"q": q, "a": answer})
         return {
-            "answer":     answer,
-            "language":   lang,
-            "sources":    [],
-            "images":     [],
-            "pdfs":       [],
-            "videos":     [],
-            "links":      redirect["links"] if redirect else [],
+            "answer": answer,
+            "language": lang,
+            "sources": [],
             "from_cache": False,
         }
-
     # ── build combined context ───────────────────────────────
     clean_contexts   = [c for c in all_contexts if len(c.strip()) > 30]
     combined_context = "\n\n".join(clean_contexts[:8])   # cap at 8 chunks
