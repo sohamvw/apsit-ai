@@ -303,12 +303,24 @@ async def query(request: QueryRequest, req: Request):
             "📞 Contact: +91-22-2895 5500 | 🌐 www.apsit.edu.in"
         )
         add_turn(session_id, {"q": q, "a": answer})
+        if TEXT_MODE:
+           return {
+               "answer": answer,
+               "language": lang,
+               "sources": [],
+               "from_cache": False,
+       }
+
         return {
-            "answer": answer,
-            "language": lang,
-            "sources": [],
-            "from_cache": False,
-        }
+    "answer":     answer,
+    "language":   lang,
+    "sources":    [],
+    "images":     [],
+    "pdfs":       [],
+    "videos":     [],
+    "links":      redirect["links"] if redirect else [],
+    "from_cache": False,
+}
     # ── build combined context ───────────────────────────────
     clean_contexts   = [c for c in all_contexts if len(c.strip()) > 30]
     combined_context = "\n\n".join(clean_contexts[:8])   # cap at 8 chunks
@@ -363,6 +375,7 @@ ANSWER:
         answer = "AI response failed. Please try again in a moment."
 
     # ── store in session + cache ─────────────────────────────
+    
     add_turn(session_id, {"q": q, "a": answer})
     cache_set(q, answer=answer, images=all_images, pdfs=all_pdfs,
               videos=all_videos, sources=all_sources)
@@ -375,16 +388,26 @@ ANSWER:
             "url":   "https://elearn.apsit.edu.in/moodle/"
         })
 
+    if TEXT_MODE:
+
+       return {
+              
+              "answer": answer,
+              "language": lang,
+              "sources": all_sources,
+              "from_cache": False,
+              }
+
     return {
-        "answer":     answer,
-        "language":   lang,
-        "sources":    all_sources,
-        "images":     all_images[:6],
-        "pdfs":       all_pdfs[:5],
-        "videos":     all_videos[:3],
-        "links":      extra_links,
-        "from_cache": False,
-    }
+    "answer":     answer,
+    "language":   lang,
+    "sources":    all_sources,
+    "images":     all_images[:6],
+    "pdfs":       all_pdfs[:5],
+    "videos":     all_videos[:3],
+    "links":      extra_links,
+    "from_cache": False,
+ }
 
 
 # ──────────────────────────────────────────────────────────
